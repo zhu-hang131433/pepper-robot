@@ -433,6 +433,8 @@ def main():
     parser.add_argument("--asr-model", default="qwen-audio-3.0-asr-flash-streaming")
     parser.add_argument("--no-emoji", action="store_true",
                         help="不在 Pepper 胸前平板显示 SVG 表情")
+    parser.add_argument("--no-motion", action="store_true",
+                        help="Pepper 朗读时不做头部、肩部和肘部的小幅动作")
     parser.add_argument("--emoji-port", type=int, default=int(os.getenv("PEPPER_EMOJI_PORT", "54002")),
                         help="胸前平板 SVG 页面端口")
     parser.add_argument("--display-host", default=os.getenv("PEPPER_DISPLAY_HOST"),
@@ -448,6 +450,8 @@ def main():
         raise SystemExit("--continuous-auto 必须和 --auto-record 一起使用")
     if not args.auto_record or not args.streaming_asr:
         raise SystemExit("当前运行模式必须使用 --auto-record --streaming-asr")
+    if args.no_motion:
+        os.environ["PEPPER_TALK_MOTION"] = "0"
 
     emoji_display = None
     if not args.no_emoji:

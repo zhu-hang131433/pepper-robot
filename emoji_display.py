@@ -168,13 +168,21 @@ class EmojiDisplay(object):
             self._base_url = base_url.rstrip("/")
             self._port = int(port)
         else:
-            self._server = ThreadingHTTPServer(("0.0.0.0", int(port)), _EmojiRequestHandler)
             self._host = host or display_host(robot_ip)
-            self._port = self._server.server_address[1]
+            self._port = int(port)
             self._base_url = "http://{0}:{1}".format(self._host, self._port)
-            self._thread = threading.Thread(target=self._server.serve_forever, name="pepper-emoji-http")
-            self._thread.daemon = True
-            self._thread.start()
+            try:
+                self._server = ThreadingHTTPServer(("0.0.0.0", int(port)), _EmojiRequestHandler)
+            except OSError as exc:
+                # The worker now prefers inline SVG, so a stale process on the
+                # optional LAN HTTP port must not disable tablet expressions.
+                print("本机表情 HTTP 端口 {0} 被占用，将使用 Pepper 内置页面：{1}".format(port, exc))
+            else:
+                self._port = self._server.server_address[1]
+                self._base_url = "http://{0}:{1}".format(self._host, self._port)
+                self._thread = threading.Thread(target=self._server.serve_forever, name="pepper-emoji-http")
+                self._thread.daemon = True
+                self._thread.start()
         self._version = 0
         self._enabled = True
         self._last_expression = None

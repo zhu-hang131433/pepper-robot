@@ -25,7 +25,7 @@
 | `alumni_welcome_options.json` | 校友接待会随机播报的欢迎词集合 |
 | `asr_pcm_stream.py` | 百炼实时语音识别 WebSocket 客户端 |
 | `pepper_pcm_stream.py` | 从 Pepper 前方麦克风获取 16 kHz PCM 音频 |
-| `pepper_say.py` | 调用 Pepper 中文扬声器 |
+| `pepper_say.py` | 调用 Pepper 中文扬声器；朗读时默认做受限的小幅头部、肩部和肘部动作 |
 | `emoji_display.py` | 提供内置 SVG 表情页面，并驱动 Pepper 胸前平板 |
 | `pepper_emoji.py` | 通过 `ALTabletService` 打开表情页面 |
 | `pepper_wake_word_test.py` | Pepper 内置中文唤醒词监听模块 |
@@ -235,6 +235,18 @@ export BAILIAN_API_BASE_URL='https://<业务空间>.cn-beijing.maas.aliyuncs.com
 ```powershell
 .\run_wake_dialog.cmd --no-emoji
 ```
+
+### 说话时的小幅动作
+
+Pepper 朗读时会从左手抬起、右手抬起和双手小幅展开中随机选择动作，每次完整执行“抬起、短暂停留、平滑放下、休息”，而不是让各关节持续转圈。抬手主要由肩部前抬完成，只搭配少量肩部外展和屈肘；单手最大前抬约 28 度。说话动作不控制头部，让 Pepper 保持面向听众，也不会与独立的人脸跟踪功能争抢头部控制。程序不会调用髋部、膝盖、脚踝、轮子或底盘控制，因此不会因为说话动作触发行走或下肢移动。多段语音也会串行播放，避免两个朗读任务同时驱动机器人。
+
+如果现场需要完全静止的姿态，可在启动时关闭：
+
+```powershell
+.\run_wake_dialog.cmd --no-motion
+```
+
+直接调用 `run_pepper_say.cmd` 或 `run_pepper_say.sh` 时也支持 `--no-motion`。动作目标每秒连续更新约 20 次，动作线程异常不会影响语音朗读。
 
 ## 6. 百炼模型配置
 

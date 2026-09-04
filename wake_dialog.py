@@ -163,6 +163,8 @@ def main():
                         help="do not load or save automatically learned replies")
     parser.add_argument("--no-emoji", action="store_true",
                         help="不在 Pepper 胸前平板显示 SVG 表情")
+    parser.add_argument("--no-motion", action="store_true",
+                        help="Pepper 朗读时不做头部、肩部和肘部的小幅动作")
     parser.add_argument("--emoji-port", type=int, default=int(os.getenv("PEPPER_EMOJI_PORT", "54002")),
                         help="胸前平板 SVG 页面端口")
     parser.add_argument("--display-host", default=os.getenv("PEPPER_DISPLAY_HOST"),
@@ -204,6 +206,8 @@ def main():
     child_env = os.environ.copy()
     child_env["DASHSCOPE_API_KEY"] = api_key
     child_env["BAILIAN_API_BASE_URL"] = base_url
+    if args.no_motion:
+        child_env["PEPPER_TALK_MOTION"] = "0"
     greeting_stop = None
     greeting_thread = None
     if greetings is not None:
@@ -271,6 +275,8 @@ def main():
                     ["--no-learned-replies"] if args.no_learned_replies else []
                 ) + (
                     ["--no-emoji"] if args.no_emoji else []
+                ) + (
+                    ["--no-motion"] if args.no_motion else []
                 ) + (
                     ["--display-host", args.display_host] if args.display_host else []
                 ) + (

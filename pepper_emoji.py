@@ -119,27 +119,29 @@ def main():
     if args.server:
         if args.control_port is None:
             raise SystemExit("--server 必须同时提供 --control-port")
-        loaded = False
+        # Prefer the self-contained page.  ALTabletService.showWebview() can
+        # return success after starting a request even when another process
+        # owns the HTTP port and serves a 404, so treating the LAN URL as the
+        # first choice can leave Pepper displaying a blank/error page.
+        if args.html_base64:
+            show_inline_html(tablet, args.html_base64)
+            run_update_server(tablet, args.control_host, args.control_port)
+            return 0
         if wifi_status == "CONNECTED" and args.url:
             loaded = tablet.showWebview(args.url)
             if loaded is not False:
                 run_update_server(tablet, args.control_host, args.control_port)
                 return 0
-        if args.html_base64:
-            show_inline_html(tablet, args.html_base64)
-            run_update_server(tablet, args.control_host, args.control_port)
-            return 0
-        if loaded is False:
-            raise SystemExit("Pepper tablet could not open the expression page.")
-        raise SystemExit("Pepper tablet Wi-Fi is {0}, and no expression page was supplied.".format(wifi_status))
-    if wifi_status == "CONNECTED" and args.url:
-        loaded = tablet.showWebview(args.url)
-        if loaded is not False:
-            return 0
+        raise SystemExit("Pepper tablet could not open the expression page.")
+    # The inline page is also the reliable default for one-shot display.
     if args.html_base64:
         show_inline_html(tablet, args.html_base64, args.reuse_webview)
         print("Pepper tablet used the offline inline-SVG fallback.")
         return 0
+    if wifi_status == "CONNECTED" and args.url:
+        loaded = tablet.showWebview(args.url)
+        if loaded is not False:
+            return 0
     if wifi_status != "CONNECTED":
         raise SystemExit(
             "Pepper tablet Wi-Fi is {0}, and no inline HTML fallback was supplied.".format(

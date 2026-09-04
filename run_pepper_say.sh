@@ -15,4 +15,4 @@ export PYTHONHOME="$PEPPER_RUNTIME"
 export PYTHONPATH="$PEPPER_SDK_ROOT/lib/python2.7/site-packages${PYTHONPATH:+:$PYTHONPATH}"
 export LD_LIBRARY_PATH="$PEPPER_RUNTIME/lib/x86_64-linux-gnu:$PEPPER_SDK_ROOT/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
 
-exec "$PEPPER_RUNTIME/bin/python2.7" "$BRIDGE_ROOT/pepper_say.py" --robot-ip "$ROBOT_IP" --language Chinese
+exec "$PEPPER_RUNTIME/bin/python2.7" "$BRIDGE_ROOT/pepper_say.py" --robot-ip "$ROBOT_IP" --language Chinese "$@"
