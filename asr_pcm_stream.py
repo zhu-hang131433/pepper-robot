@@ -90,6 +90,9 @@ class ASRThrottledError(RuntimeError):
     """DashScope temporarily rejected a streaming ASR request."""
 
 
+ASR_RETRY_DELAYS = (1.5, 3.0)
+
+
 def is_throttled_error(message):
     text = str(message).lower()
     return (
@@ -138,6 +141,48 @@ def stop_recognition_safely(recognition):
             raise
 
 
+def _recognize_pcm_frames(model, frames):
+    """Recognize a buffered utterance for a throttle-only retry."""
+    callback = StreamCallback()
+    recognition = Recognition(
+        model=model, format="pcm", sample_rate=16000, callback=callback
+    )
+    recognition_stopped = False
+    try:
+        start_recognition_safely(recognition)
+        if not callback.opened.wait(3.0):
+            if callback._error and is_throttled_error(callback._error):
+                raise ASRThrottledError("实时 ASR 调用失败: " + callback._error)
+            raise RuntimeError("实时 ASR 客户端未完成启动")
+        for data in frames:
+            if callback.complete.is_set() or not getattr(recognition, "_running", True):
+                recognition_stopped = True
+                break
+            try:
+                recognition.send_audio_frame(data)
+            except Exception as exc:
+                if not _recognition_is_stopped_error(exc):
+                    raise
+                recognition_stopped = True
+                break
+        if not recognition_stopped:
+            stop_recognition_safely(recognition)
+            recognition_stopped = True
+        callback.complete.wait(5.0)
+        if callback._error:
+            message = "实时 ASR 调用失败: " + callback._error
+            if is_throttled_error(callback._error):
+                raise ASRThrottledError(message)
+            raise RuntimeError(message)
+        return callback.text()
+    finally:
+        if not recognition_stopped:
+            try:
+                stop_recognition_safely(recognition)
+            except Exception:
+                pass
+
+
 def transcribe_pepper_stream(api_key, base_url, root, model, stream_args):
     """Return final ASR text while microphone PCM is uploaded in real time."""
     listener = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -157,6 +202,7 @@ def transcribe_pepper_stream(api_key, base_url, root, model, stream_args):
     return_code = None
     audio_frames = 0
     audio_bytes = 0
+    pcm_frames = []
     recognition_stopped = False
     try:
         deadline = time.monotonic() + 30.0
@@ -182,6 +228,7 @@ def transcribe_pepper_stream(api_key, base_url, root, model, stream_args):
         if not data:
             return_code = process.wait(timeout=10.0)
         else:
+            pcm_frames.append(data)
             dashscope.api_key = api_key
             dashscope.base_websocket_api_url = to_ws_url(base_url)
             configure_websocket_proxy()
@@ -210,11 +257,12 @@ def transcribe_pepper_stream(api_key, base_url, root, model, stream_args):
             data = connection.recv(3200)
             if not data:
                 break
+            pcm_frames.append(data)
             if recognition is None:
                 break
             if callback.complete.is_set() or not getattr(recognition, "_running", True):
                 recognition_stopped = True
-                break
+                continue
             try:
                 recognition.send_audio_frame(data)
             except Exception as exc:
@@ -271,7 +319,26 @@ def transcribe_pepper_stream(api_key, base_url, root, model, stream_args):
     if callback._error:
         message = "实时 ASR 调用失败: " + callback._error
         if is_throttled_error(callback._error):
-            raise ASRThrottledError(message)
+            last_error = message
+            for retry_number, delay in enumerate(ASR_RETRY_DELAYS, 1):
+                print(
+                    "百炼实时 ASR 限流，{0:.1f} 秒后自动重试（第 {1} 次）。".format(
+                        delay, retry_number
+                    ),
+                    file=sys.stderr,
+                )
+                time.sleep(delay)
+                try:
+                    retry_text = _recognize_pcm_frames(model, pcm_frames)
+                    if retry_text:
+                        print("百炼实时 ASR 重试成功。", file=sys.stderr)
+                        return retry_text, recognition
+                    last_error = "实时 ASR 重试未返回有效文字"
+                except ASRThrottledError as exc:
+                    last_error = str(exc)
+                except RuntimeError:
+                    raise
+            raise ASRThrottledError(last_error)
         raise RuntimeError(message)
     if return_code == 2:
         raise subprocess.CalledProcessError(return_code, command)
