@@ -11,6 +11,7 @@ import base64
 import socket
 import subprocess
 import threading
+import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 
@@ -78,7 +79,7 @@ def _svg(expression):
 def _html_page(expression):
     svg = _svg(expression)
     # Inline SVG avoids relying on the browser's emoji font or an external CDN.
-    return '''<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>html,body{{margin:0;width:100%;height:100%;overflow:hidden;background:#f8fafc}}svg{{display:block;width:100%;height:100%}}</style></head><body>{}</body></html>'''.format(svg)
+    return '''<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>html,body{{margin:0;width:100%;height:100%;overflow:hidden;background:#f8fafc}}#pepper-face{{width:100%;height:100%}}svg{{display:block;width:100%;height:100%}}</style></head><body><div id="pepper-face">{}</div></body></html>'''.format(svg)
 
 
 class _EmojiRequestHandler(BaseHTTPRequestHandler):
@@ -141,6 +142,9 @@ class EmojiDisplay(object):
         self._version = 0
         self._enabled = True
         self._shown_once = bool(base_url)
+        self._last_expression = None
+        self._last_update_at = 0.0
+        self._lock = threading.Lock()
 
     @property
     def base_url(self):
@@ -151,27 +155,43 @@ class EmojiDisplay(object):
             return
         if expression not in EXPRESSIONS:
             expression = "idle"
-        self._version += 1
-        url = "{0}/emoji.html?{1}".format(
-            self._base_url,
-            "face={0}-{1}".format(expression, self._version),
-        )
+        with self._lock:
+            now = time.time()
+            if expression == self._last_expression and now - self._last_update_at < 1.0:
+                return
+            self._last_expression = expression
+            self._last_update_at = now
+            self._version += 1
+            shown_once = self._shown_once
         try:
-            encoded_html = base64.urlsafe_b64encode(
-                _html_page(expression).encode("utf-8")
-            ).decode("ascii")
-            command = launcher_command(
-                self._root, "run_pepper_emoji",
-                "--url", url,
-                "--html-base64", encoded_html,
-            )
-            if self._shown_once:
-                command.append("--reuse-webview")
+            if shown_once:
+                encoded_svg = base64.urlsafe_b64encode(
+                    _svg(expression).encode("utf-8")
+                ).decode("ascii")
+                command = launcher_command(
+                    self._root, "run_pepper_emoji",
+                    "--svg-base64", encoded_svg,
+                    "--reuse-webview",
+                )
+            else:
+                url = "{0}/emoji.html?{1}".format(
+                    self._base_url,
+                    "face={0}-{1}".format(expression, self._version),
+                )
+                encoded_html = base64.urlsafe_b64encode(
+                    _html_page(expression).encode("utf-8")
+                ).decode("ascii")
+                command = launcher_command(
+                    self._root, "run_pepper_emoji",
+                    "--url", url,
+                    "--html-base64", encoded_html,
+                )
             subprocess.run(
                 command,
                 check=True,
             )
-            self._shown_once = True
+            with self._lock:
+                self._shown_once = True
         except (OSError, RuntimeError, subprocess.CalledProcessError) as exc:
             # A tablet display problem must never stop speech recognition.
             print("胸前平板表情更新失败：{0}".format(exc))

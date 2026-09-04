@@ -41,6 +41,26 @@ def show_inline_html(tablet, encoded_html, reuse_webview=False):
     return True
 
 
+def update_inline_svg(tablet, encoded_svg):
+    """Update the already-open SVG container without reloading the WebView."""
+    try:
+        raw_svg = base64.urlsafe_b64decode(encoded_svg.encode("ascii"))
+        svg_text = raw_svg.decode("utf-8")
+    except Exception as exc:
+        raise SystemExit("Invalid inline tablet SVG: {0}".format(exc))
+
+    script = """
+        (function () {
+            var face = document.getElementById('pepper-face');
+            if (face) {
+                face.innerHTML = {0};
+            }
+        })();
+    """.format(json.dumps(svg_text, ensure_ascii=True))
+    tablet.executeJS(script)
+    return True
+
+
 def main():
     parser = argparse.ArgumentParser(description="Show an SVG expression on Pepper tablet")
     parser.add_argument("--robot-ip", required=True)
@@ -48,11 +68,16 @@ def main():
     parser.add_argument("--url")
     parser.add_argument("--html-base64",
                         help="inline HTML fallback for a tablet without Wi-Fi")
+    parser.add_argument("--svg-base64",
+                        help="update the SVG inside the already-open tablet page")
     parser.add_argument("--reuse-webview", action="store_true",
                         help="update the already-open internal tablet page")
     args = parser.parse_args()
 
     tablet = ALProxy("ALTabletService", args.robot_ip, args.robot_port)
+    if args.reuse_webview and args.svg_base64:
+        update_inline_svg(tablet, args.svg_base64)
+        return 0
     wifi_status = tablet.getWifiStatus()
     if wifi_status == "CONNECTED" and args.url:
         loaded = tablet.showWebview(args.url)
