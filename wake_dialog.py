@@ -282,6 +282,11 @@ def main():
                 ),
                 env=child_env, check=False,
             )
+            # The child dialogue process may exit on silence, an ASR service
+            # throttle, or a transient error. Always restore the persistent
+            # standby instruction before listening for the next wake word.
+            if emoji_display is not None:
+                emoji_display.show("idle")
             print("已回到唤醒等待状态。")
         except KeyboardInterrupt:
             if greeting_stop is not None:

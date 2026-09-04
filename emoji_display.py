@@ -19,7 +19,7 @@ from process_utils import launcher_command
 
 
 EXPRESSIONS = {
-    "idle": ("🙂", "#4f8cff", "随时为你服务"),
+    "idle": ("🙂", "#4f8cff", "待机中"),
     "listening": ("👂", "#38bdf8", "我在听"),
     "thinking": ("🤔", "#a78bfa", "让我想一想"),
     "happy": ("😊", "#22c55e", "很高兴帮助你"),
@@ -38,7 +38,19 @@ def _svg(expression):
     """Return a self-contained, tablet-friendly SVG face."""
     symbol, accent, caption = EXPRESSIONS.get(expression, EXPRESSIONS["idle"])
     safe_symbol = html.escape(symbol)
-    safe_caption = html.escape(caption)
+    caption_lines = [caption]
+    if expression == "idle":
+        caption_lines = ["待机中", "请说“小信”唤醒我"]
+    elif expression == "listening":
+        caption_lines = ["我在听", "请说话"]
+    safe_caption = html.escape(" ".join(caption_lines))
+    caption_markup = "".join(
+        '<tspan x="240" dy="{0}">{1}</tspan>'.format(
+            "0" if index == 0 else "31", html.escape(line)
+        )
+        for index, line in enumerate(caption_lines)
+    )
+    caption_size = 23 if len(caption_lines) > 1 else 27
     eyes = '<circle cx="176" cy="190" r="12" fill="#172033"/><circle cx="304" cy="190" r="12" fill="#172033"/>'
     mouth = '<path d="M190 270 Q240 315 290 270" fill="none" stroke="#172033" stroke-width="12" stroke-linecap="round"/>'
     if expression == "listening":
@@ -72,8 +84,17 @@ def _svg(expression):
   {decoration}
   {eyes}
   {mouth}
-  <text x="240" y="415" text-anchor="middle" font-family="Arial, sans-serif" font-size="27" font-weight="700" fill="#172033">{caption}</text>
-</svg>'''.format(accent=accent, decoration=decoration, eyes=eyes, mouth=mouth, symbol=safe_symbol, caption=safe_caption)
+  <text x="240" y="405" text-anchor="middle" font-family="Arial, sans-serif" font-size="{caption_size}" font-weight="700" fill="#172033">{caption_markup}</text>
+</svg>'''.format(
+        accent=accent,
+        decoration=decoration,
+        eyes=eyes,
+        mouth=mouth,
+        symbol=safe_symbol,
+        caption=safe_caption,
+        caption_size=caption_size,
+        caption_markup=caption_markup,
+    )
 
 
 def _html_page(expression):
