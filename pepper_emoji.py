@@ -51,12 +51,12 @@ def update_inline_svg(tablet, encoded_svg):
         raise SystemExit("Invalid inline tablet SVG: {0}".format(exc))
 
     script = """
-        (function () {
+        (function () {{
             var face = document.getElementById('pepper-face');
-            if (face) {
+            if (face) {{
                 face.innerHTML = {0};
-            }
-        })();
+            }}
+        }})();
     """.format(json.dumps(svg_text, ensure_ascii=True))
     tablet.executeJS(script)
     return True

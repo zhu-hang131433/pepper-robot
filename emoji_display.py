@@ -11,6 +11,7 @@ import base64
 import socket
 import subprocess
 import threading
+import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 
@@ -217,14 +218,22 @@ class EmojiDisplay(object):
             if self._worker is not None:
                 return
             self._worker = subprocess.Popen(command)
-        # Let the NAOqi proxy and the initial tablet page come up before the
-        # wake-word process starts sending state changes.
-        import time
-        time.sleep(1.0)
-        if self._worker.poll() is not None:
-            returncode = self._worker.returncode
-            self._worker = None
-            raise subprocess.CalledProcessError(returncode, command)
+        # Do not let the wake-word process send the first state update until
+        # the Python 2 worker has finished opening NAOqi and its control port.
+        deadline = time.time() + 8.0
+        while time.time() < deadline:
+            if self._worker.poll() is not None:
+                returncode = self._worker.returncode
+                self._worker = None
+                raise subprocess.CalledProcessError(returncode, command)
+            try:
+                with socket.create_connection(
+                    (self._control_host, self._control_port), timeout=0.25
+                ):
+                    return
+            except OSError:
+                time.sleep(0.1)
+        raise RuntimeError("Pepper tablet emoji worker did not become ready")
 
     def _send_svg(self, encoded_svg):
         """Send one ASCII-safe SVG update to the persistent tablet worker."""
