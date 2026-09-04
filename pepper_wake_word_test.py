@@ -72,7 +72,7 @@ def main():
     parser.add_argument("--robot-port", type=int, default=9559)
     parser.add_argument("--callback-port", type=int, default=54001)
     parser.add_argument("--wake-word", default=u"小信")
-    parser.add_argument("--confidence", type=float, default=0.15)
+    parser.add_argument("--confidence", type=float, default=0.10)
     parser.add_argument("--timeout", type=float, default=30.0)
     parser.add_argument("--autonomous-life-state", choices=("solitary", "disabled"), default="solitary",
                         help="Pepper standby state before listening (default: solitary)")

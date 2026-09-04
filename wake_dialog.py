@@ -133,7 +133,7 @@ def start_periodic_greeting(root, env, greetings, min_minutes, max_minutes):
 def main():
     parser = argparse.ArgumentParser(description="Pepper continuous wake-word dialogue")
     parser.add_argument("--wake-word", default="小信")
-    parser.add_argument("--confidence", type=float, default=0.15)
+    parser.add_argument("--confidence", type=float, default=0.10)
     parser.add_argument("--wake-timeout", type=float, default=3600.0)
     parser.add_argument("--start-timeout", type=float, default=6.0)
     parser.add_argument("--max-seconds", type=float, default=15.0)
