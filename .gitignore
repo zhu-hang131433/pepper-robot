@@ -1,0 +1,10 @@
+.env
+.runtime/
+.runtime_packages/
+__pycache__/
+*.py[cod]
+*.log
+learned_replies.json
+.pytest_cache/
+.mypy_cache/
+.DS_Store
