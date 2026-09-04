@@ -112,6 +112,19 @@ def start_recognition_safely(recognition):
         gate.set()
 
 
+def _recognition_is_stopped_error(exc):
+    return "Speech recognition has stopped" in str(exc)
+
+
+def stop_recognition_safely(recognition):
+    """Stop a streaming request without failing if DashScope ended it first."""
+    try:
+        recognition.stop()
+    except Exception as exc:
+        if not _recognition_is_stopped_error(exc):
+            raise
+
+
 def transcribe_pepper_stream(api_key, base_url, root, model, stream_args):
     """Return final ASR text while microphone PCM is uploaded in real time."""
     dashscope.api_key = api_key
@@ -162,14 +175,25 @@ def transcribe_pepper_stream(api_key, base_url, root, model, stream_args):
             data = connection.recv(3200)
             if not data:
                 break
-            recognition.send_audio_frame(data)
+            if callback.complete.is_set() or not getattr(recognition, "_running", True):
+                recognition_stopped = True
+                break
+            try:
+                recognition.send_audio_frame(data)
+            except Exception as exc:
+                # DashScope may finish a short utterance before Pepper's VAD
+                # closes its socket.  Do not send more frames to that request.
+                if not _recognition_is_stopped_error(exc):
+                    raise
+                recognition_stopped = True
+                break
             audio_frames += 1
             audio_bytes += len(data)
         # The PCM helper closes its local socket as soon as VAD decides that
         # the user has finished.  Submit the ASR stream now, in parallel with
         # its NAOqi unsubscribe/session teardown, instead of waiting for that
         # teardown before asking DashScope for the final text.
-        recognition.stop()
+        stop_recognition_safely(recognition)
         recognition_stopped = True
         return_code = process.wait(timeout=10.0)
     except subprocess.TimeoutExpired:
@@ -194,7 +218,7 @@ def transcribe_pepper_stream(api_key, base_url, root, model, stream_args):
                 file=sys.stderr,
             )
             if not recognition_stopped:
-                recognition.stop()
+                stop_recognition_safely(recognition)
         except Exception:
             pass
 
