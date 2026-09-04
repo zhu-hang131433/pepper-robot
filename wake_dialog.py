@@ -137,7 +137,7 @@ def main():
     parser.add_argument("--wake-timeout", type=float, default=3600.0)
     parser.add_argument("--start-timeout", type=float, default=6.0)
     parser.add_argument("--max-seconds", type=float, default=15.0)
-    parser.add_argument("--start-threshold", type=int, default=300)
+    parser.add_argument("--start-threshold", type=int, default=420)
     parser.add_argument("--silence-threshold", type=int, default=400)
     parser.add_argument("--silence-seconds", type=float, default=0.45)
     parser.add_argument("--settle-seconds", type=float, default=1.2,

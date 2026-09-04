@@ -33,6 +33,11 @@ def normalize_local_question(text):
     return re.sub(r"[\s，。！？、；：,.!?;:'\"“”‘’（）()]+", "", text).lower()
 
 
+def is_reply_worthy_text(text):
+    """Accept phrases/sentences, but ignore empty or single-character ASR noise."""
+    return len(normalize_local_question(text)) >= 2
+
+
 def load_local_replies(path):
     """Load optional exact-match replies without making startup depend on them."""
     try:
@@ -404,7 +409,7 @@ def main():
                         help="start Pepper speech on the first completed Agent sentence")
     parser.add_argument("--start-timeout", type=float, default=6.0)
     parser.add_argument("--max-seconds", type=float, default=15.0)
-    parser.add_argument("--start-threshold", type=int, default=300)
+    parser.add_argument("--start-threshold", type=int, default=420)
     parser.add_argument("--silence-threshold", type=int, default=400)
     parser.add_argument("--silence-seconds", type=float, default=0.45)
     parser.add_argument("--settle-seconds", type=float, default=1.2,
@@ -521,9 +526,12 @@ def main():
                     "--silence-seconds", str(args.silence_seconds),
                 ],
             )
-            if not user_text:
+            if not is_reply_worthy_text(user_text):
                 set_emoji("idle")
-                print("未识别到人声，请靠近 Pepper 前方麦克风后再试。")
+                if user_text:
+                    print("识别结果过短，已忽略：{0}".format(user_text))
+                else:
+                    print("未识别到人声，请靠近 Pepper 前方麦克风后再试。")
                 continue
             print("您> " + user_text)
             set_emoji("thinking")
