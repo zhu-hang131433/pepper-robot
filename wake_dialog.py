@@ -169,9 +169,9 @@ def main():
                         help="Pepper 访问本机 SVG 页面时使用的 IP 地址")
     parser.add_argument("--greeting-file", default=None,
                         help="fixed alumni welcome text for periodic playback")
-    parser.add_argument("--greeting-minutes", type=float, default=5.0,
+    parser.add_argument("--greeting-minutes", type=float, default=2.0,
                         help="minimum interval between alumni greetings")
-    parser.add_argument("--greeting-max-minutes", type=float, default=5.0,
+    parser.add_argument("--greeting-max-minutes", type=float, default=3.0,
                         help="maximum interval between alumni greetings")
     parser.add_argument("--no-periodic-greeting", action="store_true",
                         help="disable periodic alumni welcome playback")

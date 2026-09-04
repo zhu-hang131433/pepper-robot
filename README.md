@@ -80,7 +80,7 @@ Set-Location "C:\path\to\pepper_bailian_bridge"
 
 Windows 不需要执行 `start_in_wsl.sh`、`setup_wsl_firewall.ps1`，也不需要配置 `.wslconfig`。Windows 主机的网络适配器必须与 Pepper 位于同一局域网，且 Pepper 能访问本机 TCP `54000`、`54001`、`54002`。
 
-自动语音对话启动后，程序默认每 5 分钟播放一次 `alumni_welcome_options.json` 中的 7 段校友欢迎词，并尽量避免连续播放同一段。以后可直接在这个 JSON 数组中继续添加字符串，新增文本会自动参与随机播放。若临时关闭自动播报，可使用：
+自动语音对话启动后，程序默认每 2～3 分钟随机播放一次 `alumni_welcome_options.json` 中的 7 段校友欢迎词，并尽量避免连续播放同一段。自动播报线程独立运行，因此 Pepper 在“小信”唤醒等待状态时也会继续播报；进入语音对话期间若恰好到点也可能播报。以后可直接在这个 JSON 数组中继续添加字符串，新增文本会自动参与随机播放。若临时关闭自动播报，可使用：
 
 ```powershell
 .\run_wake_dialog.cmd --no-periodic-greeting
