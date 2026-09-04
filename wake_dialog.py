@@ -95,7 +95,7 @@ def load_greetings(path):
 
 
 def start_periodic_greeting(root, env, greetings, min_minutes, max_minutes):
-    """Play the alumni welcome message at a random interval until stopped."""
+    """Play the alumni welcome message at a configurable interval until stopped."""
     stop_event = threading.Event()
     last_index = [None]
 
@@ -114,11 +114,13 @@ def start_periodic_greeting(root, env, greetings, min_minutes, max_minutes):
                     launcher_command(root, "run_pepper_say"),
                     input=greetings[selected_index].encode("utf-8"), env=env, check=True,
                 )
-                print(
-                    "校友欢迎词已自动播报；下一次将在 {0:g}～{1:g} 分钟内随机播放。".format(
+                if min_minutes == max_minutes:
+                    next_message = "下一次将在 {0:g} 分钟后播放。".format(min_minutes)
+                else:
+                    next_message = "下一次将在 {0:g}～{1:g} 分钟内随机播放。".format(
                         min_minutes, max_minutes
                     )
-                )
+                print("校友欢迎词已自动播报；{0}".format(next_message))
             except (OSError, subprocess.CalledProcessError) as exc:
                 print("校友欢迎词自动播报失败：{0}".format(exc), file=sys.stderr)
 
@@ -167,10 +169,10 @@ def main():
                         help="Pepper 访问本机 SVG 页面时使用的 IP 地址")
     parser.add_argument("--greeting-file", default=None,
                         help="fixed alumni welcome text for periodic playback")
-    parser.add_argument("--greeting-minutes", type=float, default=10.0,
-                        help="minimum random interval between alumni greetings")
-    parser.add_argument("--greeting-max-minutes", type=float, default=15.0,
-                        help="maximum random interval between alumni greetings")
+    parser.add_argument("--greeting-minutes", type=float, default=5.0,
+                        help="minimum interval between alumni greetings")
+    parser.add_argument("--greeting-max-minutes", type=float, default=5.0,
+                        help="maximum interval between alumni greetings")
     parser.add_argument("--no-periodic-greeting", action="store_true",
                         help="disable periodic alumni welcome playback")
     args = parser.parse_args()

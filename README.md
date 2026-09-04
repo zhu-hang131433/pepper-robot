@@ -80,13 +80,13 @@ Set-Location "C:\path\to\pepper_bailian_bridge"
 
 Windows 不需要执行 `start_in_wsl.sh`、`setup_wsl_firewall.ps1`，也不需要配置 `.wslconfig`。Windows 主机的网络适配器必须与 Pepper 位于同一局域网，且 Pepper 能访问本机 TCP `54000`、`54001`、`54002`。
 
-自动语音对话启动后，程序默认每 10～15 分钟随机播放一次 `alumni_welcome_options.json` 中的 7 段校友欢迎词，并尽量避免连续播放同一段。以后可直接在这个 JSON 数组中继续添加字符串，新增文本会自动参与随机播放。若临时关闭自动播报，可使用：
+自动语音对话启动后，程序默认每 5 分钟播放一次 `alumni_welcome_options.json` 中的 7 段校友欢迎词，并尽量避免连续播放同一段。以后可直接在这个 JSON 数组中继续添加字符串，新增文本会自动参与随机播放。若临时关闭自动播报，可使用：
 
 ```powershell
 .\run_wake_dialog.cmd --no-periodic-greeting
 ```
 
-也可以通过 `--greeting-file` 指定其他文本文件或 JSON 文本数组，并用 `--greeting-minutes`、`--greeting-max-minutes` 调整随机间隔。
+也可以通过 `--greeting-file` 指定其他文本文件或 JSON 文本数组，并用 `--greeting-minutes`、`--greeting-max-minutes` 调整间隔；两个参数相同即可固定间隔。
 
 ## 3. Linux/WSL 目标电脑的前置条件
 
