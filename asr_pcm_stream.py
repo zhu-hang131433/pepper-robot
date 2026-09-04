@@ -86,6 +86,19 @@ class StreamCallback(RecognitionCallback):
             return "".join(self._final_texts) or self._partial_text
 
 
+class ASRThrottledError(RuntimeError):
+    """DashScope temporarily rejected a streaming ASR request."""
+
+
+def is_throttled_error(message):
+    text = str(message).lower()
+    return (
+        "too many requests" in text
+        or "throttled" in text
+        or "system capacity" in text
+    )
+
+
 def start_recognition_safely(recognition):
     """Start DashScope only after its worker is allowed to see _running=True.
 
@@ -127,14 +140,6 @@ def stop_recognition_safely(recognition):
 
 def transcribe_pepper_stream(api_key, base_url, root, model, stream_args):
     """Return final ASR text while microphone PCM is uploaded in real time."""
-    dashscope.api_key = api_key
-    dashscope.base_websocket_api_url = to_ws_url(base_url)
-    configure_websocket_proxy()
-    callback = StreamCallback()
-    recognition = Recognition(model=model, format="pcm", sample_rate=16000, callback=callback)
-    start_recognition_safely(recognition)
-    if not callback.opened.wait(3.0):
-        raise RuntimeError("实时 ASR 客户端未完成启动")
     listener = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     listener.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     listener.bind(("127.0.0.1", 0))
@@ -147,6 +152,8 @@ def transcribe_pepper_stream(api_key, base_url, root, model, stream_args):
     command = launcher_command(root, "run_pepper_pcm_stream", "--stream-port", stream_port, *stream_args)
     process = subprocess.Popen(command)
     connection = None
+    callback = None
+    recognition = None
     return_code = None
     audio_frames = 0
     audio_bytes = 0
@@ -168,12 +175,42 @@ def transcribe_pepper_stream(api_key, base_url, root, model, stream_args):
                         "Pepper 麦克风在 30 秒内未完成订阅。"
                         "这通常不是音频占用，而是 Pepper 无法反向访问电脑上的 qi 回调服务。"
                     )
+        # Wait for Pepper's local VAD to emit the first speech frame before
+        # opening a cloud ASR request.  This prevents silent rounds from
+        # consuming DashScope streaming capacity.
+        data = connection.recv(3200)
+        if not data:
+            return_code = process.wait(timeout=10.0)
+        else:
+            dashscope.api_key = api_key
+            dashscope.base_websocket_api_url = to_ws_url(base_url)
+            configure_websocket_proxy()
+            callback = StreamCallback()
+            recognition = Recognition(
+                model=model, format="pcm", sample_rate=16000, callback=callback
+            )
+            start_recognition_safely(recognition)
+            if not callback.opened.wait(3.0):
+                if callback._error and is_throttled_error(callback._error):
+                    raise ASRThrottledError("实时 ASR 调用失败: " + callback._error)
+                raise RuntimeError("实时 ASR 客户端未完成启动")
+            try:
+                recognition.send_audio_frame(data)
+            except Exception as exc:
+                if not _recognition_is_stopped_error(exc):
+                    raise
+                recognition_stopped = True
+            audio_frames += 1
+            audio_bytes += len(data)
+
         # The streamer exits on start/max recording time and closes this
         # socket.  Keep this read blocking so normal no-speech handling still
         # comes from the streamer rather than an arbitrary client timeout.
         while True:
             data = connection.recv(3200)
             if not data:
+                break
+            if recognition is None:
                 break
             if callback.complete.is_set() or not getattr(recognition, "_running", True):
                 recognition_stopped = True
@@ -193,8 +230,9 @@ def transcribe_pepper_stream(api_key, base_url, root, model, stream_args):
         # the user has finished.  Submit the ASR stream now, in parallel with
         # its NAOqi unsubscribe/session teardown, instead of waiting for that
         # teardown before asking DashScope for the final text.
-        stop_recognition_safely(recognition)
-        recognition_stopped = True
+        if recognition is not None:
+            stop_recognition_safely(recognition)
+            recognition_stopped = True
         return_code = process.wait(timeout=10.0)
     except subprocess.TimeoutExpired:
         raise RuntimeError("Pepper 麦克风采集进程在结束后仍未退出")
@@ -210,21 +248,31 @@ def transcribe_pepper_stream(api_key, base_url, root, model, stream_args):
                 process.kill()
                 process.wait()
         try:
-            queued_frames = recognition._stream_data.qsize()
+            queued_frames = recognition._stream_data.qsize() if recognition is not None else 0
             print(
                 "ASR 音频上传：{0} 帧，{1} 字节，待发送队列 {2} 帧。".format(
                     audio_frames, audio_bytes, queued_frames
                 ),
                 file=sys.stderr,
             )
-            if not recognition_stopped:
+            if recognition is not None and not recognition_stopped:
                 stop_recognition_safely(recognition)
         except Exception:
             pass
 
+    if callback is None:
+        if return_code == 2:
+            raise subprocess.CalledProcessError(return_code, command)
+        if return_code != 0:
+            raise subprocess.CalledProcessError(return_code, command)
+        return "", None
+
     callback.complete.wait(5.0)
     if callback._error:
-        raise RuntimeError("实时 ASR 调用失败: " + callback._error)
+        message = "实时 ASR 调用失败: " + callback._error
+        if is_throttled_error(callback._error):
+            raise ASRThrottledError(message)
+        raise RuntimeError(message)
     if return_code == 2:
         raise subprocess.CalledProcessError(return_code, command)
     if return_code != 0:

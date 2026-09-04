@@ -335,6 +335,10 @@ API Key 与 Base URL 不属于同一业务空间。请在百炼 API Key 页面�
 - 一直不提交：提高 `--silence-threshold`，例如改为 `300`；
 - 很难开始收音：降低 `--start-threshold`，例如改为 `220`。
 
+### `Too many requests` 或 `system capacity limits`
+
+这是百炼实时 ASR 的服务端限流，通常不是 Pepper 或防火墙故障。程序会先等待 Pepper 本地 VAD 检测到确实有人声，再创建云端 ASR 请求；触发限流时会自动暂停 15 秒并回到唤醒等待。请确认只运行一个 `run_wake_dialog.cmd`，必要时等待几十秒后再试。
+
 ### Pepper 不说话
 
 确认 Pepper 已安装中文语音包；再检查 `PEPPER_SDK_ROOT` 是否指向正确的官方 SDK 目录，并确认 NAOqi 端口 `9559` 可访问。

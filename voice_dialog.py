@@ -17,7 +17,7 @@ from pathlib import Path
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
-from asr_pcm_stream import transcribe_pepper_stream
+from asr_pcm_stream import ASRThrottledError, transcribe_pepper_stream
 from emoji_display import EmojiDisplay
 from process_utils import launcher_command
 
@@ -604,6 +604,15 @@ def main():
                         quick_replies.update(learned_replies)
                         quick_replies.update(local_replies)
                         print("自动学习问答：已记录，下次同样问法将本地快速回答。")
+        except ASRThrottledError as exc:
+            set_emoji("idle")
+            print(
+                "百炼实时 ASR 当前限流，已暂停 15 秒，随后回到唤醒等待。",
+                file=sys.stderr,
+            )
+            print("限流详情：{0}".format(exc), file=sys.stderr)
+            time.sleep(15.0)
+            break
         except (RuntimeError, subprocess.CalledProcessError) as exc:
             if args.auto_record and isinstance(exc, subprocess.CalledProcessError) and exc.returncode == 2:
                 set_emoji("idle")
