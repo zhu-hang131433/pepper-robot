@@ -11,7 +11,6 @@ import base64
 import socket
 import subprocess
 import threading
-import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 
@@ -120,14 +119,29 @@ def display_host(robot_ip):
         probe.close()
 
 
-class EmojiDisplay(object):
-    """Own the local SVG server and update Pepper's chest tablet."""
+def _free_local_port():
+    probe = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    try:
+        probe.bind(("127.0.0.1", 0))
+        return probe.getsockname()[1]
+    finally:
+        probe.close()
 
-    def __init__(self, root, robot_ip, port=54002, host=None, base_url=None):
+
+class EmojiDisplay(object):
+    """Own one tablet worker and update its SVG without reloading the page."""
+
+    def __init__(self, root, robot_ip, port=54002, host=None, base_url=None,
+                 control_host=None, control_port=None):
         self._root = root
         self._robot_ip = robot_ip
         self._server = None
         self._thread = None
+        self._worker = None
+        self._worker_lock = threading.Lock()
+        self._remote_control = bool(base_url and control_port)
+        self._control_host = control_host or "127.0.0.1"
+        self._control_port = int(control_port) if control_port else _free_local_port()
         if base_url:
             self._base_url = base_url.rstrip("/")
             self._port = int(port)
@@ -141,14 +155,20 @@ class EmojiDisplay(object):
             self._thread.start()
         self._version = 0
         self._enabled = True
-        self._shown_once = bool(base_url)
         self._last_expression = None
-        self._last_update_at = 0.0
         self._lock = threading.Lock()
 
     @property
     def base_url(self):
         return self._base_url
+
+    @property
+    def control_host(self):
+        return self._control_host
+
+    @property
+    def control_port(self):
+        return self._control_port
 
     def show(self, expression):
         if not self._enabled:
@@ -156,48 +176,73 @@ class EmojiDisplay(object):
         if expression not in EXPRESSIONS:
             expression = "idle"
         with self._lock:
-            now = time.time()
-            if expression == self._last_expression and now - self._last_update_at < 1.0:
+            if expression == self._last_expression:
                 return
             self._last_expression = expression
-            self._last_update_at = now
             self._version += 1
-            shown_once = self._shown_once
         try:
-            if shown_once:
-                encoded_svg = base64.urlsafe_b64encode(
-                    _svg(expression).encode("utf-8")
-                ).decode("ascii")
-                command = launcher_command(
-                    self._root, "run_pepper_emoji",
-                    "--svg-base64", encoded_svg,
-                    "--reuse-webview",
-                )
+            encoded_svg = base64.urlsafe_b64encode(
+                _svg(expression).encode("utf-8")
+            ).decode("ascii")
+            if self._remote_control:
+                self._send_svg(encoded_svg)
+                return
+            if self._worker is None:
+                self._start_worker(expression)
             else:
-                url = "{0}/emoji.html?{1}".format(
-                    self._base_url,
-                    "face={0}-{1}".format(expression, self._version),
-                )
-                encoded_html = base64.urlsafe_b64encode(
-                    _html_page(expression).encode("utf-8")
-                ).decode("ascii")
-                command = launcher_command(
-                    self._root, "run_pepper_emoji",
-                    "--url", url,
-                    "--html-base64", encoded_html,
-                )
-            subprocess.run(
-                command,
-                check=True,
-            )
-            with self._lock:
-                self._shown_once = True
+                self._send_svg(encoded_svg)
         except (OSError, RuntimeError, subprocess.CalledProcessError) as exc:
             # A tablet display problem must never stop speech recognition.
             print("胸前平板表情更新失败：{0}".format(exc))
             self._enabled = False
 
+    def _start_worker(self, expression):
+        """Start one Python 2 NAOqi worker that keeps the WebView alive."""
+        url = "{0}/emoji.html?{1}".format(
+            self._base_url,
+            "face={0}-{1}".format(expression, self._version),
+        )
+        encoded_html = base64.urlsafe_b64encode(
+            _html_page(expression).encode("utf-8")
+        ).decode("ascii")
+        command = launcher_command(
+            self._root, "run_pepper_emoji",
+            "--server",
+            "--control-host", self._control_host,
+            "--control-port", self._control_port,
+            "--url", url,
+            "--html-base64", encoded_html,
+        )
+        with self._worker_lock:
+            if self._worker is not None:
+                return
+            self._worker = subprocess.Popen(command)
+        # Let the NAOqi proxy and the initial tablet page come up before the
+        # wake-word process starts sending state changes.
+        import time
+        time.sleep(1.0)
+        if self._worker.poll() is not None:
+            returncode = self._worker.returncode
+            self._worker = None
+            raise subprocess.CalledProcessError(returncode, command)
+
+    def _send_svg(self, encoded_svg):
+        """Send one ASCII-safe SVG update to the persistent tablet worker."""
+        with socket.create_connection(
+            (self._control_host, self._control_port), timeout=1.5
+        ) as connection:
+            connection.sendall((encoded_svg + "\n").encode("ascii"))
+
     def close(self):
+        with self._worker_lock:
+            worker = self._worker
+            self._worker = None
+        if worker is not None and worker.poll() is None:
+            try:
+                from process_utils import terminate_process_tree
+                terminate_process_tree(worker)
+            except OSError:
+                pass
         if self._server is not None:
             self._server.shutdown()
             self._server.server_close()

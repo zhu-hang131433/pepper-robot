@@ -434,6 +434,10 @@ def main():
                         help="Pepper 访问本机 SVG 页面时使用的 IP 地址")
     parser.add_argument("--emoji-url-base", default=None,
                         help="复用唤醒主流程已经启动的 SVG 页面服务")
+    parser.add_argument("--emoji-control-host", default=None,
+                        help="复用唤醒主流程的本地表情更新通道")
+    parser.add_argument("--emoji-control-port", type=int, default=None,
+                        help="复用唤醒主流程的本地表情更新端口")
     args = parser.parse_args()
     if args.continuous_auto and not args.auto_record:
         raise SystemExit("--continuous-auto 必须和 --auto-record 一起使用")
@@ -445,7 +449,8 @@ def main():
         robot_ip = os.getenv("PEPPER_ROBOT_IP", "192.168.0.100")
         try:
             emoji_display = EmojiDisplay(
-                root, robot_ip, args.emoji_port, args.display_host, args.emoji_url_base
+                root, robot_ip, args.emoji_port, args.display_host, args.emoji_url_base,
+                args.emoji_control_host, args.emoji_control_port,
             )
             atexit.register(emoji_display.close)
             if not args.emoji_url_base:

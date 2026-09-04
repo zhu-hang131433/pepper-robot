@@ -210,11 +210,15 @@ def main():
         greeting_stop, greeting_thread = start_periodic_greeting(
             root, child_env, greetings, args.greeting_minutes, args.greeting_max_minutes
         )
-        print(
-            "校友欢迎词自动播报已开启：共 {0} 段，每 {1:g}～{2:g} 分钟随机播放一次。".format(
-                len(greetings), args.greeting_minutes, args.greeting_max_minutes
+        if args.greeting_minutes == args.greeting_max_minutes:
+            greeting_schedule = "每 {0:g} 分钟播放一次".format(args.greeting_minutes)
+        else:
+            greeting_schedule = "每 {0:g}～{1:g} 分钟随机播放一次".format(
+                args.greeting_minutes, args.greeting_max_minutes
             )
-        )
+        print("校友欢迎词自动播报已开启：共 {0} 段，{1}。".format(
+            len(greetings), greeting_schedule
+        ))
 
     print("自动语音对话已启动：请说“{0}”唤醒 Pepper；按 Ctrl+C 退出。".format(args.wake_word))
     while True:
@@ -271,12 +275,14 @@ def main():
                     ["--display-host", args.display_host] if args.display_host else []
                 ) + (
                     ["--emoji-url-base", emoji_display.base_url] if emoji_display is not None else []
+                ) + (
+                    ["--emoji-control-host", emoji_display.control_host,
+                     "--emoji-control-port", str(emoji_display.control_port)]
+                    if emoji_display is not None else []
                 ),
                 env=child_env, check=False,
             )
             print("已回到唤醒等待状态。")
-            if emoji_display is not None:
-                emoji_display.show("idle")
         except KeyboardInterrupt:
             if greeting_stop is not None:
                 greeting_stop.set()

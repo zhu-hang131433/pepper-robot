@@ -6,6 +6,7 @@ from __future__ import print_function
 import argparse
 import base64
 import json
+import socket
 import time
 
 from naoqi import ALProxy
@@ -61,6 +62,36 @@ def update_inline_svg(tablet, encoded_svg):
     return True
 
 
+def run_update_server(tablet, host, port):
+    """Keep one NAOqi proxy alive and accept SVG updates from Python 3."""
+    listener = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    listener.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    listener.bind((host, int(port)))
+    listener.listen(4)
+    print("Pepper tablet emoji worker ready on {0}:{1}.".format(host, port))
+    try:
+        while True:
+            connection, _address = listener.accept()
+            try:
+                chunks = []
+                while True:
+                    chunk = connection.recv(65536)
+                    if not chunk:
+                        break
+                    chunks.append(chunk)
+                    if b"\n" in chunk or sum(len(item) for item in chunks) >= 262144:
+                        break
+                encoded_svg = b"".join(chunks).strip().split(b"\n", 1)[0]
+                if encoded_svg:
+                    update_inline_svg(tablet, encoded_svg.decode("ascii"))
+            except Exception as exc:
+                print("Pepper tablet SVG update failed: {0}".format(exc))
+            finally:
+                connection.close()
+    finally:
+        listener.close()
+
+
 def main():
     parser = argparse.ArgumentParser(description="Show an SVG expression on Pepper tablet")
     parser.add_argument("--robot-ip", required=True)
@@ -70,6 +101,12 @@ def main():
                         help="inline HTML fallback for a tablet without Wi-Fi")
     parser.add_argument("--svg-base64",
                         help="update the SVG inside the already-open tablet page")
+    parser.add_argument("--server", action="store_true",
+                        help="keep one NAOqi proxy alive for later SVG updates")
+    parser.add_argument("--control-host", default="127.0.0.1",
+                        help="local host for the persistent SVG update worker")
+    parser.add_argument("--control-port", type=int,
+                        help="local port for the persistent SVG update worker")
     parser.add_argument("--reuse-webview", action="store_true",
                         help="update the already-open internal tablet page")
     args = parser.parse_args()
@@ -79,6 +116,22 @@ def main():
         update_inline_svg(tablet, args.svg_base64)
         return 0
     wifi_status = tablet.getWifiStatus()
+    if args.server:
+        if args.control_port is None:
+            raise SystemExit("--server 必须同时提供 --control-port")
+        loaded = False
+        if wifi_status == "CONNECTED" and args.url:
+            loaded = tablet.showWebview(args.url)
+            if loaded is not False:
+                run_update_server(tablet, args.control_host, args.control_port)
+                return 0
+        if args.html_base64:
+            show_inline_html(tablet, args.html_base64)
+            run_update_server(tablet, args.control_host, args.control_port)
+            return 0
+        if loaded is False:
+            raise SystemExit("Pepper tablet could not open the expression page.")
+        raise SystemExit("Pepper tablet Wi-Fi is {0}, and no expression page was supplied.".format(wifi_status))
     if wifi_status == "CONNECTED" and args.url:
         loaded = tablet.showWebview(args.url)
         if loaded is not False:
